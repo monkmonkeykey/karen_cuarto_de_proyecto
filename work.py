@@ -107,7 +107,7 @@ FONT = {
     "1": [
         "0010",
         "0110",
-        "0010",
+        "1010",
         "0010",
         "0010",
         "0010",
@@ -284,7 +284,7 @@ try:
         draw_time(hora)
         strip.show()
 
-        time.sleep(0.1)
+        #time.sleep(0.1)
 
 except KeyboardInterrupt:
     clear()
