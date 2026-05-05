@@ -14,6 +14,7 @@ CHECK_INTERVAL = 2
 
 def keyboard_is_ready():
     if not os.path.exists(KEYBOARD_PATH):
+        print(f"No existe {KEYBOARD_PATH}")
         return False
 
     try:
@@ -26,13 +27,13 @@ def keyboard_is_ready():
         capabilities = device.capabilities()
 
         if ecodes.EV_KEY not in capabilities:
-            print("El dispositivo existe, pero no reporta teclas.")
+            print("El dispositivo existe, pero no reporta eventos de teclado.")
             return False
 
         key_codes = capabilities[ecodes.EV_KEY]
 
         if ecodes.KEY_A not in key_codes and ecodes.KEY_SPACE not in key_codes:
-            print("El dispositivo existe, pero no parece ser teclado completo.")
+            print("El dispositivo existe, pero no parece ser un teclado completo.")
             return False
 
         print(f"Teclado listo: {KEYBOARD_PATH}: {device.name}")

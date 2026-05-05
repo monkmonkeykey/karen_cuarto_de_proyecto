@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 import time
+import os
 import threading
 from datetime import datetime
 from rpi_ws281x import PixelStrip, Color
-from evdev import InputDevice, categorize, ecodes, list_devices
+from evdev import InputDevice, categorize, ecodes
 
 # -----------------------------
 # CONFIGURACIÓN GENERAL
@@ -32,6 +33,13 @@ LED_CHANNEL = 0
 # Matriz 1: reloj rojo
 MONEY_MATRIX = 0
 CLOCK_MATRIX = 1
+
+# -----------------------------
+# TECLADO FIJO
+# -----------------------------
+
+KEYBOARD_PATH = "/dev/input/event5"
+EXPECTED_KEYBOARD_NAME = "Microsoft Wedge Mobile Keyboard"
 
 # -----------------------------
 # CONFIGURACIÓN DE MAPEO
@@ -405,101 +413,79 @@ last_keyboard_activity = None
 # Ventana para considerar continuidad entre una tecla y otra.
 KEYBOARD_ACTIVITY_WINDOW = 0.25
 
-# Cada cuánto reintenta buscar teclado si no lo encuentra
+# Cada cuánto reintenta abrir el teclado si falla
 KEYBOARD_RESCAN_SECONDS = 2
 
-# Para evitar condiciones de carrera entre el hilo del teclado y el loop principal
+# Para evitar conflictos entre el hilo del teclado y el loop principal
 keyboard_lock = threading.Lock()
 
 
-def find_keyboard_devices():
-    keyboard_devices = []
+def open_fixed_keyboard():
+    if not os.path.exists(KEYBOARD_PATH):
+        print(f"No existe {KEYBOARD_PATH}")
+        return None
 
-    for path in list_devices():
-        try:
-            device = InputDevice(path)
-            capabilities = device.capabilities()
+    try:
+        device = InputDevice(KEYBOARD_PATH)
 
-            if ecodes.EV_KEY not in capabilities:
-                continue
+        if EXPECTED_KEYBOARD_NAME not in device.name:
+            print(f"El dispositivo en {KEYBOARD_PATH} no es el esperado: {device.name}")
+            return None
 
-            key_codes = capabilities[ecodes.EV_KEY]
+        capabilities = device.capabilities()
 
-            # Filtro básico para detectar teclados reales.
-            # Muchos dispositivos reportan EV_KEY, pero no todos son teclados.
-            if (
-                ecodes.KEY_A in key_codes
-                or ecodes.KEY_SPACE in key_codes
-                or ecodes.KEY_ENTER in key_codes
-            ):
-                keyboard_devices.append(device)
+        if ecodes.EV_KEY not in capabilities:
+            print(f"El dispositivo {KEYBOARD_PATH} no reporta eventos EV_KEY.")
+            return None
 
-        except Exception:
-            pass
+        key_codes = capabilities[ecodes.EV_KEY]
 
-    return keyboard_devices
+        if (
+            ecodes.KEY_A not in key_codes
+            and ecodes.KEY_SPACE not in key_codes
+            and ecodes.KEY_ENTER not in key_codes
+        ):
+            print(f"El dispositivo {KEYBOARD_PATH} no parece ser un teclado completo.")
+            return None
 
+        print(f"Teclado seleccionado: {device.path}: {device.name}")
+        return device
 
-def listen_to_device(device):
-    global last_keyboard_activity
-
-    for event in device.read_loop():
-        if event.type != ecodes.EV_KEY:
-            continue
-
-        key_event = categorize(event)
-        now = time.monotonic()
-
-        with keyboard_lock:
-            # key_down
-            if key_event.keystate == key_event.key_down:
-                pressed_keys.add(key_event.scancode)
-                last_keyboard_activity = now
-
-            # key_up
-            elif key_event.keystate == key_event.key_up:
-                pressed_keys.discard(key_event.scancode)
-                last_keyboard_activity = now
+    except Exception as e:
+        print(f"Error abriendo teclado fijo: {e}")
+        return None
 
 
 def keyboard_listener():
-    while True:
-        devices = find_keyboard_devices()
+    global last_keyboard_activity
 
-        if len(devices) == 0:
-            print("No se encontró teclado. Reintentando...")
+    while True:
+        device = open_fixed_keyboard()
+
+        if device is None:
+            print("No se pudo abrir el teclado. Reintentando...")
             time.sleep(KEYBOARD_RESCAN_SECONDS)
             continue
 
-        print("Teclado(s) detectado(s):")
-        for device in devices:
-            print(f"- {device.path}: {device.name}")
-
-        threads = []
-
         try:
-            for device in devices:
-                t = threading.Thread(
-                    target=listen_to_device,
-                    args=(device,),
-                    daemon=True
-                )
-                t.start()
-                threads.append(t)
+            for event in device.read_loop():
+                if event.type != ecodes.EV_KEY:
+                    continue
 
-            # Mantiene vivo el supervisor.
-            # Si todos los hilos mueren, vuelve a buscar dispositivos.
-            while True:
-                alive = any(t.is_alive() for t in threads)
+                key_event = categorize(event)
+                now = time.monotonic()
 
-                if not alive:
-                    print("Se perdió la lectura del teclado. Reintentando...")
-                    break
+                with keyboard_lock:
+                    if key_event.keystate == key_event.key_down:
+                        pressed_keys.add(key_event.scancode)
+                        last_keyboard_activity = now
 
-                time.sleep(1)
+                    elif key_event.keystate == key_event.key_up:
+                        pressed_keys.discard(key_event.scancode)
+                        last_keyboard_activity = now
 
         except Exception as e:
-            print(f"Error en listener de teclado: {e}")
+            print(f"Error leyendo teclado: {e}")
 
         with keyboard_lock:
             pressed_keys.clear()
