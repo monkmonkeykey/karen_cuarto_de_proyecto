@@ -2,55 +2,58 @@
 
 import time
 import sys
-from evdev import InputDevice, ecodes, list_devices
+import os
+from evdev import InputDevice, ecodes
 
-TIMEOUT_SECONDS = 60
+KEYBOARD_PATH = "/dev/input/event5"
+EXPECTED_NAME = "Microsoft Wedge Mobile Keyboard"
+
+TIMEOUT_SECONDS = 120
 CHECK_INTERVAL = 2
 
 
-def find_keyboard_devices():
-    keyboards = []
+def keyboard_is_ready():
+    if not os.path.exists(KEYBOARD_PATH):
+        return False
 
-    for path in list_devices():
-        try:
-            device = InputDevice(path)
-            capabilities = device.capabilities()
+    try:
+        device = InputDevice(KEYBOARD_PATH)
 
-            if ecodes.EV_KEY not in capabilities:
-                continue
+        if EXPECTED_NAME not in device.name:
+            print(f"Dispositivo encontrado, pero no es el esperado: {device.name}")
+            return False
 
-            key_codes = capabilities[ecodes.EV_KEY]
+        capabilities = device.capabilities()
 
-            # Filtro para detectar teclados reales.
-            if (
-                ecodes.KEY_A in key_codes
-                or ecodes.KEY_SPACE in key_codes
-                or ecodes.KEY_ENTER in key_codes
-            ):
-                keyboards.append(device)
+        if ecodes.EV_KEY not in capabilities:
+            print("El dispositivo existe, pero no reporta teclas.")
+            return False
 
-        except Exception:
-            pass
+        key_codes = capabilities[ecodes.EV_KEY]
 
-    return keyboards
+        if ecodes.KEY_A not in key_codes and ecodes.KEY_SPACE not in key_codes:
+            print("El dispositivo existe, pero no parece ser teclado completo.")
+            return False
+
+        print(f"Teclado listo: {KEYBOARD_PATH}: {device.name}")
+        return True
+
+    except Exception as e:
+        print(f"Error revisando teclado: {e}")
+        return False
 
 
 start_time = time.monotonic()
 
 while True:
-    devices = find_keyboard_devices()
-
-    if len(devices) > 0:
-        print("Teclado detectado antes de iniciar:")
-        for device in devices:
-            print(f"- {device.path}: {device.name}")
+    if keyboard_is_ready():
         sys.exit(0)
 
     elapsed = time.monotonic() - start_time
 
     if elapsed >= TIMEOUT_SECONDS:
-        print("ERROR: No se detectó teclado dentro del tiempo límite.")
+        print(f"ERROR: No se detectó el teclado esperado en {KEYBOARD_PATH}")
         sys.exit(1)
 
-    print("Esperando teclado...")
+    print(f"Esperando teclado en {KEYBOARD_PATH}...")
     time.sleep(CHECK_INTERVAL)
