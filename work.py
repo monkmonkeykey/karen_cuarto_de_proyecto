@@ -245,7 +245,7 @@ def draw_time(text):
     # Los dígitos de cada bloque van juntos.
     # El espacio se agrega solo antes y después de cada ":".
 
-    x = 0
+    x = 1
     y = 0
 
     colon_on = int(time.time()) % 2 == 0
