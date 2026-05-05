@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 import time
+import threading
 from datetime import datetime
 from rpi_ws281x import PixelStrip, Color
-import keyboard
+from evdev import InputDevice, categorize, ecodes, list_devices
 
 # -----------------------------
 # CONFIGURACIÓN GENERAL
@@ -24,6 +25,9 @@ LED_INVERT = False
 LED_CHANNEL = 0
 
 # Conexión en cadena:
+# GPIO18 -> DIN matriz 0
+# DOUT matriz 0 -> DIN matriz 1
+#
 # Matriz 0: dinero verde
 # Matriz 1: reloj rojo
 MONEY_MATRIX = 0
@@ -271,14 +275,12 @@ def draw_char(matrix_id, char, x_offset, y_offset, color):
 
 def get_text_width(text, spacing=0):
     total = 0
+    chars = [char for char in text if char in FONT]
 
-    visible_chars = [char for char in text if char in FONT]
+    for i, char in enumerate(chars):
+        total += len(FONT[char][0])
 
-    for i, char in enumerate(visible_chars):
-        bitmap = FONT.get(char)
-        total += len(bitmap[0])
-
-        if i < len(visible_chars) - 1:
+        if i < len(chars) - 1:
             total += spacing
 
     return total
@@ -296,27 +298,11 @@ def draw_text(matrix_id, text, x, y, color, spacing=0):
 
 # -----------------------------
 # DIBUJO DEL RELOJ
-#
-# Fuente 4x7.
-# Formato visual:
-# HH : MM : SS
-#
-# Distribución:
-# HH = 8 px
-# espacio = 1 px
-# : = 1 px
-# espacio = 1 px
-# MM = 8 px
-# espacio = 1 px
-# : = 1 px
-# espacio = 1 px
-# SS = 8 px
-# Total = 29 px
-# Margen izquierdo = 1 px
 # -----------------------------
 
 def draw_time():
     now = datetime.now()
+
     hh = now.strftime("%H")
     mm = now.strftime("%M")
     ss = now.strftime("%S")
@@ -355,37 +341,22 @@ def draw_time():
 
 # -----------------------------
 # DIBUJO DEL DINERO
-#
-# Incremento:
-# 0.080 por segundo completo de actividad.
-#
-# Formatos:
-# $ 0.080
-# $ 1.280
-# $12.800
-# $99.920
-# $100.00
-# $999.92
-# $1000.0
-#
-# Se intenta mostrar con separación después del $
-# mientras el ancho lo permita.
 # -----------------------------
 
 def format_money_variable(money_thousandths):
     value = money_thousandths / 1000.0
 
-    # Intenta primero con 3, luego 2, luego 1 decimal.
+    # Intenta mostrar 3 decimales, luego 2, luego 1.
     for decimals in [3, 2, 1]:
         text = f"${value:.{decimals}f}"
 
-        # Preferimos espacio después de $ si cabe.
-        text_with_space = "$" + text[1:]
+        if get_text_width(text, spacing=1) <= WIDTH:
+            return text, 1
 
-        if get_text_width(text_with_space, spacing=0) <= WIDTH:
-            return text_with_space
+        if get_text_width(text, spacing=0) <= WIDTH:
+            return text, 0
 
-    # Si aun así no cabe, usa 1 decimal y recorta desde la izquierda,
+    # Si aun con 1 decimal no cabe, recorta desde la izquierda
     # conservando siempre el símbolo $.
     text = f"${value:.1f}"
 
@@ -395,28 +366,21 @@ def format_money_variable(money_thousandths):
         else:
             text = text[1:]
 
-    return text
+    return text, 0
 
 
 def draw_money(money_thousandths):
     clear_matrix(MONEY_MATRIX)
 
-    text = format_money_variable(money_thousandths)
+    text, spacing = format_money_variable(money_thousandths)
 
     y = 1
     x = 0
 
-    # Si cabe con 1 px de separación entre todos los caracteres, úsalo.
-    # Esto mejora mucho la lectura en valores cortos.
-    if get_text_width(text, spacing=1) <= WIDTH:
-        spacing = 1
-    else:
-        spacing = 0
-
     draw_text(MONEY_MATRIX, text, x, y, COLOR_MONEY, spacing=spacing)
 
 # -----------------------------
-# CONTROL DE TECLADO / DINERO
+# CONTROL DE TECLADO / DINERO CON EVDEV
 # -----------------------------
 
 # Dinero guardado en milésimas:
@@ -432,43 +396,133 @@ THOUSANDTHS_PER_SECOND = 80
 # Solo cuando llega a 1 segundo suma 0.080.
 typing_time_accumulator = 0.0
 
+# Teclas físicamente presionadas
 pressed_keys = set()
 
+# Último momento en que hubo evento de teclado
 last_keyboard_activity = None
 
 # Ventana para considerar continuidad entre una tecla y otra.
-# Si escribes rápido, pequeñas pausas todavía cuentan.
 KEYBOARD_ACTIVITY_WINDOW = 0.25
 
+# Cada cuánto reintenta buscar teclado si no lo encuentra
+KEYBOARD_RESCAN_SECONDS = 2
 
-def on_key_event(event):
+# Para evitar condiciones de carrera entre el hilo del teclado y el loop principal
+keyboard_lock = threading.Lock()
+
+
+def find_keyboard_devices():
+    keyboard_devices = []
+
+    for path in list_devices():
+        try:
+            device = InputDevice(path)
+            capabilities = device.capabilities()
+
+            if ecodes.EV_KEY not in capabilities:
+                continue
+
+            key_codes = capabilities[ecodes.EV_KEY]
+
+            # Filtro básico para detectar teclados reales.
+            # Muchos dispositivos reportan EV_KEY, pero no todos son teclados.
+            if (
+                ecodes.KEY_A in key_codes
+                or ecodes.KEY_SPACE in key_codes
+                or ecodes.KEY_ENTER in key_codes
+            ):
+                keyboard_devices.append(device)
+
+        except Exception:
+            pass
+
+    return keyboard_devices
+
+
+def listen_to_device(device):
     global last_keyboard_activity
 
-    now = time.monotonic()
+    for event in device.read_loop():
+        if event.type != ecodes.EV_KEY:
+            continue
 
-    if event.event_type == keyboard.KEY_DOWN:
-        pressed_keys.add(event.scan_code)
-        last_keyboard_activity = now
+        key_event = categorize(event)
+        now = time.monotonic()
 
-    elif event.event_type == keyboard.KEY_UP:
-        pressed_keys.discard(event.scan_code)
-        last_keyboard_activity = now
+        with keyboard_lock:
+            # key_down
+            if key_event.keystate == key_event.key_down:
+                pressed_keys.add(key_event.scancode)
+                last_keyboard_activity = now
+
+            # key_up
+            elif key_event.keystate == key_event.key_up:
+                pressed_keys.discard(key_event.scancode)
+                last_keyboard_activity = now
 
 
-keyboard.hook(on_key_event)
+def keyboard_listener():
+    while True:
+        devices = find_keyboard_devices()
+
+        if len(devices) == 0:
+            print("No se encontró teclado. Reintentando...")
+            time.sleep(KEYBOARD_RESCAN_SECONDS)
+            continue
+
+        print("Teclado(s) detectado(s):")
+        for device in devices:
+            print(f"- {device.path}: {device.name}")
+
+        threads = []
+
+        try:
+            for device in devices:
+                t = threading.Thread(
+                    target=listen_to_device,
+                    args=(device,),
+                    daemon=True
+                )
+                t.start()
+                threads.append(t)
+
+            # Mantiene vivo el supervisor.
+            # Si todos los hilos mueren, vuelve a buscar dispositivos.
+            while True:
+                alive = any(t.is_alive() for t in threads)
+
+                if not alive:
+                    print("Se perdió la lectura del teclado. Reintentando...")
+                    break
+
+                time.sleep(1)
+
+        except Exception as e:
+            print(f"Error en listener de teclado: {e}")
+
+        with keyboard_lock:
+            pressed_keys.clear()
+
+        time.sleep(KEYBOARD_RESCAN_SECONDS)
 
 
 def keyboard_is_active():
     now = time.monotonic()
 
-    if len(pressed_keys) > 0:
-        return True
-
-    if last_keyboard_activity is not None:
-        if now - last_keyboard_activity <= KEYBOARD_ACTIVITY_WINDOW:
+    with keyboard_lock:
+        if len(pressed_keys) > 0:
             return True
 
+        if last_keyboard_activity is not None:
+            if now - last_keyboard_activity <= KEYBOARD_ACTIVITY_WINDOW:
+                return True
+
     return False
+
+
+keyboard_thread = threading.Thread(target=keyboard_listener, daemon=True)
+keyboard_thread.start()
 
 # -----------------------------
 # LOOP PRINCIPAL
