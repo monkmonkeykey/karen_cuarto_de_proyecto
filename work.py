@@ -393,15 +393,45 @@ def format_money_variable(money_thousandths):
     return text, 0
 
 
-def draw_money(money_thousandths):
+def get_money_color_animated(current_time, last_update_time):
+    """Retorna un color animado para el dinero con efecto de destello"""
+    elapsed = current_time - last_update_time
+    
+    # La animación dura 0.5 segundos
+    ANIMATION_DURATION = 0.5
+    
+    if elapsed > ANIMATION_DURATION:
+        # Después de la animación, color normal
+        return COLOR_MONEY
+    
+    # Efecto de pulse suave: el dinero brilla y vuelve a la normalidad
+    progress = elapsed / ANIMATION_DURATION  # 0 a 1
+    
+    # Función de easing para suavidad (ease-out)
+    easing = 1 - (progress ** 2)
+    
+    # Incrementa el brillo durante la animación
+    # Verde normal: (0, 150, 0) -> Verde brillante: (0, 255, 0)
+    brightness_boost = int(105 * easing)  # 0 a 105
+    
+    return Color(0, 150 + brightness_boost, 0)
+
+
+def draw_money(money_thousandths, current_time=None):
+    if current_time is None:
+        current_time = time.monotonic()
+    
     clear_matrix(MONEY_MATRIX)
 
     text, spacing = format_money_variable(money_thousandths)
+    
+    # Obtener color animado
+    money_color = get_money_color_animated(current_time, last_money_update_time)
 
     y = 1
     x = 0
 
-    draw_text(MONEY_MATRIX, text, x, y, COLOR_MONEY, spacing=spacing)
+    draw_text(MONEY_MATRIX, text, x, y, money_color, spacing=spacing)
 
 # -----------------------------
 # CONTROL DE TECLADO / DINERO CON EVDEV
@@ -412,6 +442,7 @@ def draw_money(money_thousandths):
 # 160 = 0.160
 # 1000 = 1.000
 money_thousandths = 0
+last_money_update_time = time.monotonic()  # Para animación
 
 # Cada segundo completo de actividad suma 0.080
 THOUSANDTHS_PER_SECOND = 80
@@ -693,6 +724,7 @@ try:
 
             while typing_time_accumulator >= 1.0:
                 money_thousandths += THOUSANDTHS_PER_SECOND
+                last_money_update_time = current_time  # Actualiza tiempo de animación
                 typing_time_accumulator -= 1.0
         else:
             typing_time_accumulator = 0.0
@@ -701,7 +733,7 @@ try:
             save_data(money_thousandths, total_money_thousandths)
             last_save_time = current_time
 
-        draw_money(money_thousandths)
+        draw_money(money_thousandths, current_time)
         draw_time()
 
         strip.show()
