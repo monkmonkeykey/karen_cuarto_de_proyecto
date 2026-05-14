@@ -22,7 +22,7 @@ LED_COUNT = MATRIX_LEDS * MATRIX_COUNT
 LED_PIN = 18
 LED_FREQ_HZ = 800000
 LED_DMA = 10
-LED_BRIGHTNESS = 5
+LED_BRIGHTNESS = 10
 LED_INVERT = False
 LED_CHANNEL = 0
 
@@ -393,12 +393,38 @@ def format_money_variable(money_thousandths):
     return text, 0
 
 
+def get_animated_money_value(current_time, animation_start_time, start_value, end_value):
+    """
+    Interpola el valor del dinero durante la animación (efecto odómetro).
+    Simula números corriendo como en una gasolinera.
+    """
+    ANIMATION_DURATION = 0.8  # 800ms para la animación
+    
+    elapsed = current_time - animation_start_time
+    
+    if elapsed >= ANIMATION_DURATION:
+        # Animación terminada, retorna el valor final
+        return end_value
+    
+    # Calcula el progreso (0 a 1)
+    progress = elapsed / ANIMATION_DURATION
+    
+    # Easing: ease-out-cubic para que desacele hacia el final
+    # Hace que los números "frenan" antes de llegar al final
+    easing = 1 - ((1 - progress) ** 3)
+    
+    # Interpola entre el valor inicial y final
+    current_value = int(start_value + (end_value - start_value) * easing)
+    
+    return current_value
+
+
 def get_money_color_animated(current_time, last_update_time):
     """Retorna un color animado para el dinero con efecto de destello"""
     elapsed = current_time - last_update_time
     
-    # La animación dura 0.5 segundos
-    ANIMATION_DURATION = 0.5
+    # La animación dura 0.8 segundos
+    ANIMATION_DURATION = 0.8
     
     if elapsed > ANIMATION_DURATION:
         # Después de la animación, color normal
@@ -422,8 +448,16 @@ def draw_money(money_thousandths, current_time=None):
         current_time = time.monotonic()
     
     clear_matrix(MONEY_MATRIX)
-
-    text, spacing = format_money_variable(money_thousandths)
+    
+    # Calcula el valor animado
+    display_value = get_animated_money_value(
+        current_time,
+        animation_state['start_time'],
+        animation_state['start'],
+        money_thousandths
+    )
+    
+    text, spacing = format_money_variable(display_value)
     
     # Obtener color animado
     money_color = get_money_color_animated(current_time, last_money_update_time)
@@ -443,6 +477,12 @@ def draw_money(money_thousandths, current_time=None):
 # 1000 = 1.000
 money_thousandths = 0
 last_money_update_time = time.monotonic()  # Para animación
+
+# Estado de la animación del dinero (tipo odómetro/gasolinera)
+animation_state = {
+    'start': 0,
+    'start_time': time.monotonic()
+}
 
 # Cada segundo completo de actividad suma 0.080
 THOUSANDTHS_PER_SECOND = 80
@@ -723,8 +763,15 @@ try:
             typing_time_accumulator += delta_time
 
             while typing_time_accumulator >= 1.0:
+                # Inicia la animación con el valor anterior
+                animation_state['start'] = money_thousandths
+                animation_state['start_time'] = current_time
+                
+                # Incrementa el dinero
                 money_thousandths += THOUSANDTHS_PER_SECOND
-                last_money_update_time = current_time  # Actualiza tiempo de animación
+                
+                # Actualiza tiempo de destello de color
+                last_money_update_time = current_time
                 typing_time_accumulator -= 1.0
         else:
             typing_time_accumulator = 0.0
