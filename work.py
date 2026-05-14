@@ -331,23 +331,37 @@ def draw_time():
 
     clear_matrix(CLOCK_MATRIX)
 
-    # Primera fila: HH:MM
-    y = 0
-    x = 0
-
-    draw_text(CLOCK_MATRIX, hh, x, y, COLOR_CLOCK, spacing=0)
-    x += 9
-
-    if colon_on:
-        draw_char(CLOCK_MATRIX, ":", x, y, COLOR_COLON)
-    x += 3
-
-    draw_text(CLOCK_MATRIX, mm, x, y, COLOR_CLOCK, spacing=0)
-
-    # Segunda fila: SS
+    # Una sola fila: HH:MM:SS
     y = 1
     x = 0
-    draw_text(CLOCK_MATRIX, ss, x, y, COLOR_CLOCK, spacing=0)
+
+    # HH
+    x += draw_char(CLOCK_MATRIX, hh[0], x, y, COLOR_CLOCK)
+    x += draw_char(CLOCK_MATRIX, hh[1], x, y, COLOR_CLOCK)
+    x += 1
+
+    # :
+    if colon_on:
+        x += draw_char(CLOCK_MATRIX, ":", x, y, COLOR_COLON)
+    else:
+        x += 1
+    x += 1
+
+    # MM
+    x += draw_char(CLOCK_MATRIX, mm[0], x, y, COLOR_CLOCK)
+    x += draw_char(CLOCK_MATRIX, mm[1], x, y, COLOR_CLOCK)
+    x += 1
+
+    # :
+    if colon_on:
+        x += draw_char(CLOCK_MATRIX, ":", x, y, COLOR_COLON)
+    else:
+        x += 1
+    x += 1
+
+    # SS
+    x += draw_char(CLOCK_MATRIX, ss[0], x, y, COLOR_CLOCK)
+    x += draw_char(CLOCK_MATRIX, ss[1], x, y, COLOR_CLOCK)
 
 # -----------------------------
 # DIBUJO DEL DINERO
