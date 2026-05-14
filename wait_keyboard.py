@@ -2,59 +2,71 @@
 
 import time
 import sys
-import os
-from evdev import InputDevice, ecodes
+from evdev import InputDevice, ecodes, list_devices
 
-KEYBOARD_PATH = "/dev/input/event5"
-EXPECTED_NAME = "Microsoft Wedge Mobile Keyboard"
+EXPECTED_KEYBOARD_NAME = "Logi K250 Keyboard"
+KEYBOARD_PATH_FILE = "/tmp/karen_keyboard_path"
 
-TIMEOUT_SECONDS = 120
+TIMEOUT_SECONDS = 300
 CHECK_INTERVAL = 2
 
 
-def keyboard_is_ready():
-    if not os.path.exists(KEYBOARD_PATH):
-        print(f"No existe {KEYBOARD_PATH}")
-        return False
-
+def device_is_keyboard(device):
     try:
-        device = InputDevice(KEYBOARD_PATH)
-
-        if EXPECTED_NAME not in device.name:
-            print(f"Dispositivo encontrado, pero no es el esperado: {device.name}")
-            return False
-
         capabilities = device.capabilities()
 
         if ecodes.EV_KEY not in capabilities:
-            print("El dispositivo existe, pero no reporta eventos de teclado.")
             return False
 
         key_codes = capabilities[ecodes.EV_KEY]
 
-        if ecodes.KEY_A not in key_codes and ecodes.KEY_SPACE not in key_codes:
-            print("El dispositivo existe, pero no parece ser un teclado completo.")
-            return False
+        return (
+            ecodes.KEY_A in key_codes
+            or ecodes.KEY_SPACE in key_codes
+            or ecodes.KEY_ENTER in key_codes
+        )
 
-        print(f"Teclado listo: {KEYBOARD_PATH}: {device.name}")
-        return True
-
-    except Exception as e:
-        print(f"Error revisando teclado: {e}")
+    except Exception:
         return False
+
+
+def find_keyboard():
+    for path in list_devices():
+        try:
+            device = InputDevice(path)
+
+            if EXPECTED_KEYBOARD_NAME not in device.name:
+                continue
+
+            if not device_is_keyboard(device):
+                continue
+
+            return device
+
+        except Exception:
+            pass
+
+    return None
 
 
 start_time = time.monotonic()
 
 while True:
-    if keyboard_is_ready():
+    keyboard = find_keyboard()
+
+    if keyboard is not None:
+        print(f"Teclado listo: {keyboard.path}: {keyboard.name}")
+
+        with open(KEYBOARD_PATH_FILE, "w") as f:
+            f.write(keyboard.path)
+
         sys.exit(0)
 
     elapsed = time.monotonic() - start_time
 
     if elapsed >= TIMEOUT_SECONDS:
-        print(f"ERROR: No se detectó el teclado esperado en {KEYBOARD_PATH}")
+        print(f"ERROR: No se detectó el teclado esperado: {EXPECTED_KEYBOARD_NAME}")
         sys.exit(1)
 
-    print(f"Esperando teclado en {KEYBOARD_PATH}...")
+    print(f"Esperando teclado inalámbrico: {EXPECTED_KEYBOARD_NAME}...")
     time.sleep(CHECK_INTERVAL)

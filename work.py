@@ -6,7 +6,7 @@ import threading
 import json
 from datetime import datetime, date
 from rpi_ws281x import PixelStrip, Color
-from evdev import InputDevice, categorize, ecodes
+from evdev import InputDevice, categorize, ecodes, list_devices
 
 # -----------------------------
 # CONFIGURACIÓN GENERAL
@@ -36,11 +36,22 @@ MONEY_MATRIX = 0
 CLOCK_MATRIX = 1
 
 # -----------------------------
-# TECLADO FIJO
+# TECLADO INALÁMBRICO
 # -----------------------------
 
-KEYBOARD_PATH = "/dev/input/event5"
+# No dependemos únicamente de /dev/input/event5,
+# porque puede cambiar al reiniciar o tardar en aparecer.
 EXPECTED_KEYBOARD_NAME = "Logi K250 Keyboard"
+
+# Archivo temporal donde se guarda la ruta real detectada:
+# por ejemplo /dev/input/event5, /dev/input/event4, etc.
+KEYBOARD_PATH_FILE = "/tmp/karen_keyboard_path"
+
+# Ruta inicial opcional. Se intenta primero, pero si falla se busca por nombre.
+DEFAULT_KEYBOARD_PATH = "/dev/input/event5"
+
+# Cada cuánto reintenta abrir/buscar el teclado si no está disponible.
+KEYBOARD_RESCAN_SECONDS = 1.0
 
 # -----------------------------
 # CONFIGURACIÓN DE MAPEO
@@ -320,21 +331,23 @@ def draw_time():
 
     clear_matrix(CLOCK_MATRIX)
 
+    # Primera fila: HH:MM
     y = 0
     x = 0
 
-    # Mostrar de forma más grande: HH:MM en primera fila, SS en segunda
-    # HH
     draw_text(CLOCK_MATRIX, hh, x, y, COLOR_CLOCK, spacing=0)
     x += 9
 
-    # :
     if colon_on:
         draw_char(CLOCK_MATRIX, ":", x, y, COLOR_COLON)
     x += 3
 
-    # MM
     draw_text(CLOCK_MATRIX, mm, x, y, COLOR_CLOCK, spacing=0)
+
+    # Segunda fila: SS
+    y = 1
+    x = 0
+    draw_text(CLOCK_MATRIX, ss, x, y, COLOR_CLOCK, spacing=0)
 
 # -----------------------------
 # DIBUJO DEL DINERO
@@ -402,64 +415,146 @@ last_keyboard_activity = None
 # Ventana para considerar continuidad entre una tecla y otra.
 KEYBOARD_ACTIVITY_WINDOW = 0.25
 
-# Cada cuánto reintenta abrir el teclado si falla (más frecuente)
-KEYBOARD_RESCAN_SECONDS = 0.5
-
 # Para evitar conflictos entre el hilo del teclado y el loop principal
 keyboard_lock = threading.Lock()
 
 
-def open_fixed_keyboard():
-    if not os.path.exists(KEYBOARD_PATH):
-        print(f"No existe {KEYBOARD_PATH}")
-        return None
-
+def device_is_keyboard(device):
     try:
-        device = InputDevice(KEYBOARD_PATH)
-
-        if EXPECTED_KEYBOARD_NAME not in device.name:
-            print(f"El dispositivo en {KEYBOARD_PATH} no es el esperado: {device.name}")
-            return None
-
         capabilities = device.capabilities()
 
         if ecodes.EV_KEY not in capabilities:
-            print(f"El dispositivo {KEYBOARD_PATH} no reporta eventos EV_KEY.")
-            return None
+            return False
 
         key_codes = capabilities[ecodes.EV_KEY]
 
-        if (
-            ecodes.KEY_A not in key_codes
-            and ecodes.KEY_SPACE not in key_codes
-            and ecodes.KEY_ENTER not in key_codes
-        ):
-            print(f"El dispositivo {KEYBOARD_PATH} no parece ser un teclado completo.")
+        return (
+            ecodes.KEY_A in key_codes
+            or ecodes.KEY_SPACE in key_codes
+            or ecodes.KEY_ENTER in key_codes
+        )
+
+    except Exception:
+        return False
+
+
+def keyboard_name_matches(device):
+    return EXPECTED_KEYBOARD_NAME in device.name
+
+
+def open_keyboard_from_path(path):
+    try:
+        if not os.path.exists(path):
             return None
 
-        print(f"Teclado seleccionado: {device.path}: {device.name}")
+        device = InputDevice(path)
+
+        if not keyboard_name_matches(device):
+            print(f"Dispositivo en {path} no coincide: {device.name}")
+            return None
+
+        if not device_is_keyboard(device):
+            print(f"Dispositivo en {path} no parece teclado completo: {device.name}")
+            return None
+
         return device
 
     except Exception as e:
-        print(f"Error abriendo teclado fijo: {e}")
+        print(f"No se pudo abrir {path}: {e}")
         return None
+
+
+def find_keyboard_by_name():
+    for path in list_devices():
+        try:
+            device = InputDevice(path)
+
+            if not keyboard_name_matches(device):
+                continue
+
+            if not device_is_keyboard(device):
+                continue
+
+            return device
+
+        except Exception:
+            pass
+
+    return None
+
+
+def save_keyboard_path(path):
+    try:
+        with open(KEYBOARD_PATH_FILE, "w") as f:
+            f.write(path)
+    except Exception as e:
+        print(f"No se pudo guardar ruta del teclado: {e}")
+
+
+def read_saved_keyboard_path():
+    try:
+        if not os.path.exists(KEYBOARD_PATH_FILE):
+            return None
+
+        with open(KEYBOARD_PATH_FILE, "r") as f:
+            path = f.read().strip()
+
+        if path:
+            return path
+
+    except Exception:
+        pass
+
+    return None
+
+
+def open_keyboard():
+    # 1. Intentar la ruta guardada por una detección previa.
+    saved_path = read_saved_keyboard_path()
+
+    if saved_path:
+        device = open_keyboard_from_path(saved_path)
+        if device is not None:
+            print(f"Teclado seleccionado desde archivo: {device.path}: {device.name}")
+            return device
+
+    # 2. Intentar la ruta inicial sugerida.
+    device = open_keyboard_from_path(DEFAULT_KEYBOARD_PATH)
+
+    if device is not None:
+        print(f"Teclado seleccionado desde ruta inicial: {device.path}: {device.name}")
+        save_keyboard_path(device.path)
+        return device
+
+    # 3. Buscar por nombre entre todos los /dev/input/eventX.
+    device = find_keyboard_by_name()
+
+    if device is not None:
+        print(f"Teclado encontrado por nombre: {device.path}: {device.name}")
+        save_keyboard_path(device.path)
+        return device
+
+    print(f"No se encontró teclado con nombre: {EXPECTED_KEYBOARD_NAME}")
+    return None
 
 
 def keyboard_listener():
     global last_keyboard_activity
 
     retry_count = 0
+
     while True:
-        device = open_fixed_keyboard()
+        device = open_keyboard()
 
         if device is None:
             retry_count += 1
-            if retry_count % 5 == 0:  # Cada 5 reintentos (2.5 segundos)
-                print(f"Reintentando conexión con teclado... (intento {retry_count})")
+
+            if retry_count % 5 == 0:
+                print(f"Reintentando conexión con teclado... intento {retry_count}")
+
             time.sleep(KEYBOARD_RESCAN_SECONDS)
             continue
 
-        # Conexión exitosa
         retry_count = 0
         print("✓ Teclado conectado exitosamente")
 
@@ -512,8 +607,9 @@ keyboard_thread.start()
 
 DATA_FILE = "dinero_datos.json"
 
+
 def load_data():
-    """Carga dinero del día actual y total acumulado"""
+    """Carga dinero del día actual y total acumulado."""
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r") as f:
@@ -522,41 +618,49 @@ def load_data():
         except Exception as e:
             print(f"Error cargando datos: {e}")
             return 0, 0
+
     return 0, 0
 
+
 def save_data(dinero_hoy, dinero_total):
-    """Guarda dinero del día y total acumulado"""
+    """Guarda dinero del día y total acumulado."""
     try:
         data = {
             "fecha": str(date.today()),
             "dinero_hoy": dinero_hoy,
             "dinero_total": dinero_total
         }
+
         with open(DATA_FILE, "w") as f:
             json.dump(data, f, indent=2)
+
     except Exception as e:
         print(f"Error guardando datos: {e}")
 
+
 def check_new_day(last_day, dinero_hoy, dinero_total):
-    """Verifica si cambió el día y reinicia contador si es necesario"""
+    """Verifica si cambió el día y reinicia contador si es necesario."""
     today = date.today()
+
     if last_day != today:
         print(f"Nuevo día: {today}. Total acumulado: ${dinero_total / 1000.0:.3f}")
-        dinero_total += dinero_hoy  # Suma el dinero del día anterior al total
-        dinero_hoy = 0  # Reinicia el contador del día
+        dinero_total += dinero_hoy
+        dinero_hoy = 0
         return today, dinero_hoy, dinero_total
+
     return last_day, dinero_hoy, dinero_total
 
 # -----------------------------
 # LOOP PRINCIPAL
 # -----------------------------
 
-# Carga dinero previo
 money_thousandths, total_money_thousandths = load_data()
+
 last_day = date.today()
 last_time = time.monotonic()
 last_save_time = time.monotonic()
-SAVE_INTERVAL = 5  # Guardar cada 5 segundos
+
+SAVE_INTERVAL = 5
 
 try:
     while True:
@@ -564,9 +668,10 @@ try:
         delta_time = current_time - last_time
         last_time = current_time
 
-        # Verifica si cambió el día
         last_day, money_thousandths, total_money_thousandths = check_new_day(
-            last_day, money_thousandths, total_money_thousandths
+            last_day,
+            money_thousandths,
+            total_money_thousandths
         )
 
         if keyboard_is_active():
@@ -578,7 +683,6 @@ try:
         else:
             typing_time_accumulator = 0.0
 
-        # Guarda datos cada cierto tiempo
         if current_time - last_save_time >= SAVE_INTERVAL:
             save_data(money_thousandths, total_money_thousandths)
             last_save_time = current_time
@@ -591,9 +695,9 @@ try:
         time.sleep(0.01)
 
 except KeyboardInterrupt:
-    # Guarda datos finales antes de salir
     save_data(money_thousandths, total_money_thousandths)
     clear_all()
     strip.show()
+
     print(f"\nDinero hoy: ${money_thousandths / 1000.0:.3f}")
     print(f"Total acumulado: ${total_money_thousandths / 1000.0:.3f}")
