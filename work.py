@@ -333,7 +333,7 @@ def draw_time():
 
     # Una sola fila: HH:MM:SS
     y = 1
-    x = 0
+    x = 1
 
     # HH
     x += draw_char(CLOCK_MATRIX, hh[0], x, y, COLOR_CLOCK)
