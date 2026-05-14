@@ -39,7 +39,7 @@ CLOCK_MATRIX = 1
 # -----------------------------
 
 KEYBOARD_PATH = "/dev/input/event5"
-EXPECTED_KEYBOARD_NAME = "Microsoft Wedge Mobile Keyboard"
+EXPECTED_KEYBOARD_NAME = "Logi K250 Keyboard"
 
 # -----------------------------
 # CONFIGURACIÓN DE MAPEO
