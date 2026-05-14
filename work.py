@@ -3,7 +3,8 @@
 import time
 import os
 import threading
-from datetime import datetime
+import json
+from datetime import datetime, date
 from rpi_ws281x import PixelStrip, Color
 from evdev import InputDevice, categorize, ecodes
 
@@ -319,33 +320,21 @@ def draw_time():
 
     clear_matrix(CLOCK_MATRIX)
 
-    y = 1
-    x = 1
+    y = 0
+    x = 0
 
+    # Mostrar de forma más grande: HH:MM en primera fila, SS en segunda
     # HH
     draw_text(CLOCK_MATRIX, hh, x, y, COLOR_CLOCK, spacing=0)
-    x += 8
+    x += 9
 
-    # espacio, :, espacio
-    x += 1
+    # :
     if colon_on:
         draw_char(CLOCK_MATRIX, ":", x, y, COLOR_COLON)
-    x += 1
-    x += 1
+    x += 3
 
     # MM
     draw_text(CLOCK_MATRIX, mm, x, y, COLOR_CLOCK, spacing=0)
-    x += 8
-
-    # espacio, :, espacio
-    x += 1
-    if colon_on:
-        draw_char(CLOCK_MATRIX, ":", x, y, COLOR_COLON)
-    x += 1
-    x += 1
-
-    # SS
-    draw_text(CLOCK_MATRIX, ss, x, y, COLOR_CLOCK, spacing=0)
 
 # -----------------------------
 # DIBUJO DEL DINERO
@@ -413,8 +402,8 @@ last_keyboard_activity = None
 # Ventana para considerar continuidad entre una tecla y otra.
 KEYBOARD_ACTIVITY_WINDOW = 0.25
 
-# Cada cuánto reintenta abrir el teclado si falla
-KEYBOARD_RESCAN_SECONDS = 2
+# Cada cuánto reintenta abrir el teclado si falla (más frecuente)
+KEYBOARD_RESCAN_SECONDS = 0.5
 
 # Para evitar conflictos entre el hilo del teclado y el loop principal
 keyboard_lock = threading.Lock()
@@ -459,13 +448,20 @@ def open_fixed_keyboard():
 def keyboard_listener():
     global last_keyboard_activity
 
+    retry_count = 0
     while True:
         device = open_fixed_keyboard()
 
         if device is None:
-            print("No se pudo abrir el teclado. Reintentando...")
+            retry_count += 1
+            if retry_count % 5 == 0:  # Cada 5 reintentos (2.5 segundos)
+                print(f"Reintentando conexión con teclado... (intento {retry_count})")
             time.sleep(KEYBOARD_RESCAN_SECONDS)
             continue
+
+        # Conexión exitosa
+        retry_count = 0
+        print("✓ Teclado conectado exitosamente")
 
         try:
             for event in device.read_loop():
@@ -511,16 +507,67 @@ keyboard_thread = threading.Thread(target=keyboard_listener, daemon=True)
 keyboard_thread.start()
 
 # -----------------------------
+# GESTIÓN DE PERSISTENCIA
+# -----------------------------
+
+DATA_FILE = "dinero_datos.json"
+
+def load_data():
+    """Carga dinero del día actual y total acumulado"""
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r") as f:
+                data = json.load(f)
+                return data.get("dinero_hoy", 0), data.get("dinero_total", 0)
+        except Exception as e:
+            print(f"Error cargando datos: {e}")
+            return 0, 0
+    return 0, 0
+
+def save_data(dinero_hoy, dinero_total):
+    """Guarda dinero del día y total acumulado"""
+    try:
+        data = {
+            "fecha": str(date.today()),
+            "dinero_hoy": dinero_hoy,
+            "dinero_total": dinero_total
+        }
+        with open(DATA_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"Error guardando datos: {e}")
+
+def check_new_day(last_day, dinero_hoy, dinero_total):
+    """Verifica si cambió el día y reinicia contador si es necesario"""
+    today = date.today()
+    if last_day != today:
+        print(f"Nuevo día: {today}. Total acumulado: ${dinero_total / 1000.0:.3f}")
+        dinero_total += dinero_hoy  # Suma el dinero del día anterior al total
+        dinero_hoy = 0  # Reinicia el contador del día
+        return today, dinero_hoy, dinero_total
+    return last_day, dinero_hoy, dinero_total
+
+# -----------------------------
 # LOOP PRINCIPAL
 # -----------------------------
 
+# Carga dinero previo
+money_thousandths, total_money_thousandths = load_data()
+last_day = date.today()
 last_time = time.monotonic()
+last_save_time = time.monotonic()
+SAVE_INTERVAL = 5  # Guardar cada 5 segundos
 
 try:
     while True:
         current_time = time.monotonic()
         delta_time = current_time - last_time
         last_time = current_time
+
+        # Verifica si cambió el día
+        last_day, money_thousandths, total_money_thousandths = check_new_day(
+            last_day, money_thousandths, total_money_thousandths
+        )
 
         if keyboard_is_active():
             typing_time_accumulator += delta_time
@@ -531,6 +578,11 @@ try:
         else:
             typing_time_accumulator = 0.0
 
+        # Guarda datos cada cierto tiempo
+        if current_time - last_save_time >= SAVE_INTERVAL:
+            save_data(money_thousandths, total_money_thousandths)
+            last_save_time = current_time
+
         draw_money(money_thousandths)
         draw_time()
 
@@ -539,5 +591,9 @@ try:
         time.sleep(0.01)
 
 except KeyboardInterrupt:
+    # Guarda datos finales antes de salir
+    save_data(money_thousandths, total_money_thousandths)
     clear_all()
     strip.show()
+    print(f"\nDinero hoy: ${money_thousandths / 1000.0:.3f}")
+    print(f"Total acumulado: ${total_money_thousandths / 1000.0:.3f}")
