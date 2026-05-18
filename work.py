@@ -473,8 +473,11 @@ animation_state = {
     "start_time": time.monotonic()
 }
 
+# Cada segundo completo de actividad suma 0.0185
+THOUSANDTHS_PER_SECOND = 185
+
 # Cada segundo completo de actividad suma 0.080
-THOUSANDTHS_PER_SECOND = 80
+THOUSANDTHS_PER_SECOND = 185
 
 typing_time_accumulator = 0.0
 clock_seconds = 0  # Contador de segundos desde inicio (solo con interacción)
