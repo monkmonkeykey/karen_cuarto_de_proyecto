@@ -784,9 +784,13 @@ try:
 
                 last_money_update_time = current_time
                 typing_time_accumulator -= 1.0
+                
+                # Guardar inmediatamente cada vez que cambia dinero o tiempo
+                save_data(money_thousandths, total_money_thousandths, clock_seconds)
         else:
             typing_time_accumulator = 0.0
 
+        # Guardar también cada 5 segundos como respaldo
         if current_time - last_save_time >= SAVE_INTERVAL:
             save_data(money_thousandths, total_money_thousandths, clock_seconds)
             last_save_time = current_time
