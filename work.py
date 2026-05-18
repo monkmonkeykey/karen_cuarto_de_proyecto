@@ -480,7 +480,6 @@ THOUSANDTHS_PER_SECOND = 185
 THOUSANDTHS_PER_SECOND = 185
 
 typing_time_accumulator = 0.0
-clock_seconds = 0  # Contador de segundos desde inicio (solo con interacción)
 
 pressed_keys = set()
 last_keyboard_activity = None
@@ -686,18 +685,25 @@ def load_data():
                 saved_date = data.get("fecha")
                 today = str(date.today())
                 
+                print(f"DEBUG: saved_date={saved_date}, today={today}")
+                
                 if saved_date == today:
                     # Mismo día: cargar todos los datos
-                    return (data.get("dinero_hoy", 0), 
-                            data.get("dinero_total", 0), 
-                            data.get("clock_seconds", 0))
+                    dinero_hoy = data.get("dinero_hoy", 0)
+                    dinero_total = data.get("dinero_total", 0)
+                    clock_secs = data.get("clock_seconds", 0)
+                    print(f"DEBUG: Cargado del mismo día - dinero_hoy={dinero_hoy}, clock_seconds={clock_secs}")
+                    return (dinero_hoy, dinero_total, clock_secs)
                 else:
                     # Día diferente: dinero nuevo, mantener total
-                    return (0, data.get("dinero_total", 0), 0)
+                    dinero_total = data.get("dinero_total", 0)
+                    print(f"DEBUG: Día diferente - dinero_total={dinero_total}")
+                    return (0, dinero_total, 0)
         except Exception as e:
             print(f"Error cargando datos: {e}")
             return 0, 0, 0
 
+    print("DEBUG: No existe archivo de datos")
     return 0, 0, 0
 
 
@@ -708,11 +714,14 @@ def save_data(dinero_hoy, dinero_total, clock_seconds):
             "fecha": str(date.today()),
             "dinero_hoy": dinero_hoy,
             "dinero_total": dinero_total,
-            "clock_seconds": clock_seconds
+            "clock_seconds": int(clock_seconds)  # Convertir a int para asegurar serialización
         }
 
         with open(DATA_FILE, "w") as f:
             json.dump(data, f, indent=2)
+        
+        # Debug
+        print(f"Guardado: dinero_hoy={dinero_hoy}, clock_seconds={clock_seconds}")
 
     except Exception as e:
         print(f"Error guardando datos: {e}")
