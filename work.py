@@ -21,11 +21,11 @@ LED_COUNT = WIDTH * HEIGHT  # 256 LEDs por matriz
 # GPIO18 debe usar channel 0.
 
 # Matriz dinero / verde
-MONEY_LED_PIN = 18          # GPIO18 / pin físico 33
+MONEY_LED_PIN = 13          # GPIO13 / pin físico 33
 MONEY_LED_CHANNEL = 1
 
 # Matriz reloj / roja
-CLOCK_LED_PIN = 13          # GPIO13 / pin físico 12
+CLOCK_LED_PIN = 18          # GPIO18 / pin físico 12
 CLOCK_LED_CHANNEL = 0
 
 LED_FREQ_HZ = 800000
@@ -51,9 +51,6 @@ WIRING_MODE = "vertical"   # "horizontal" o "vertical"
 
 MIRROR_X = True
 MIRROR_Y = True
-
-ROTATE_180_MONEY = False    # Cambiar a True para rotar la pantalla de dinero 180 grados
-ROTATE_180_CLOCK = True    # Cambiar a True para rotar la pantalla de reloj 180 grados
 
 # -----------------------------
 # COLORES
@@ -96,7 +93,7 @@ clock_strip.begin()
 # MAPEO XY A ÍNDICE LOCAL
 # -----------------------------
 
-def xy_to_index(x, y, apply_rotation=False):
+def xy_to_index(x, y):
     if x < 0 or x >= WIDTH or y < 0 or y >= HEIGHT:
         return None
 
@@ -109,28 +106,22 @@ def xy_to_index(x, y, apply_rotation=False):
     if WIRING_MODE == "horizontal":
         if SERPENTINE:
             if y % 2 == 0:
-                index = y * WIDTH + x
+                return y * WIDTH + x
             else:
-                index = y * WIDTH + (WIDTH - 1 - x)
+                return y * WIDTH + (WIDTH - 1 - x)
         else:
-            index = y * WIDTH + x
+            return y * WIDTH + x
 
     elif WIRING_MODE == "vertical":
         if SERPENTINE:
             if x % 2 == 0:
-                index = x * HEIGHT + y
+                return x * HEIGHT + y
             else:
-                index = x * HEIGHT + (HEIGHT - 1 - y)
+                return x * HEIGHT + (HEIGHT - 1 - y)
         else:
-            index = x * HEIGHT + y
-    else:
-        index = y * WIDTH + x
+            return x * HEIGHT + y
 
-    # Aplicar rotación de 180 grados si está habilitada
-    if apply_rotation:
-        index = (LED_COUNT - 1) - index
-
-    return index
+    return y * WIDTH + x
 
 # -----------------------------
 # FUENTE 4x7
@@ -271,14 +262,7 @@ def clear_all():
 
 
 def set_pixel(strip, x, y, color):
-    # Determinar si aplicar rotación según el tipo de pantalla
-    apply_rotation = False
-    if strip is money_strip and ROTATE_180_MONEY:
-        apply_rotation = True
-    elif strip is clock_strip and ROTATE_180_CLOCK:
-        apply_rotation = True
-
-    index = xy_to_index(x, y, apply_rotation=apply_rotation)
+    index = xy_to_index(x, y)
 
     if index is not None:
         strip.setPixelColor(index, color)
