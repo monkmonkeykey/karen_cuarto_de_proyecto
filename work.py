@@ -677,26 +677,38 @@ DATA_FILE = "dinero_datos.json"
 
 
 def load_data():
-    """Carga dinero del día actual y total acumulado."""
+    """Carga dinero del día actual, total acumulado y tiempo acumulado."""
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r") as f:
                 data = json.load(f)
-                return data.get("dinero_hoy", 0), data.get("dinero_total", 0)
+                # Verificar si los datos son del mismo día
+                saved_date = data.get("fecha")
+                today = str(date.today())
+                
+                if saved_date == today:
+                    # Mismo día: cargar todos los datos
+                    return (data.get("dinero_hoy", 0), 
+                            data.get("dinero_total", 0), 
+                            data.get("clock_seconds", 0))
+                else:
+                    # Día diferente: dinero nuevo, mantener total
+                    return (0, data.get("dinero_total", 0), 0)
         except Exception as e:
             print(f"Error cargando datos: {e}")
-            return 0, 0
+            return 0, 0, 0
 
-    return 0, 0
+    return 0, 0, 0
 
 
-def save_data(dinero_hoy, dinero_total):
-    """Guarda dinero del día y total acumulado."""
+def save_data(dinero_hoy, dinero_total, clock_seconds):
+    """Guarda dinero del día, total acumulado y tiempo acumulado."""
     try:
         data = {
             "fecha": str(date.today()),
             "dinero_hoy": dinero_hoy,
-            "dinero_total": dinero_total
+            "dinero_total": dinero_total,
+            "clock_seconds": clock_seconds
         }
 
         with open(DATA_FILE, "w") as f:
@@ -706,23 +718,24 @@ def save_data(dinero_hoy, dinero_total):
         print(f"Error guardando datos: {e}")
 
 
-def check_new_day(last_day, dinero_hoy, dinero_total):
-    """Verifica si cambió el día y reinicia contador si es necesario."""
+def check_new_day(last_day, dinero_hoy, dinero_total, clock_seconds):
+    """Verifica si cambió el día y reinicia contadores si es necesario."""
     today = date.today()
 
     if last_day != today:
         print(f"Nuevo día: {today}. Total acumulado: ${dinero_total / 1000.0:.3f}")
         dinero_total += dinero_hoy
         dinero_hoy = 0
-        return today, dinero_hoy, dinero_total
+        clock_seconds = 0  # Reiniciar contador de tiempo
+        return today, dinero_hoy, dinero_total, clock_seconds
 
-    return last_day, dinero_hoy, dinero_total
+    return last_day, dinero_hoy, dinero_total, clock_seconds
 
 # -----------------------------
 # LOOP PRINCIPAL
 # -----------------------------
 
-money_thousandths, total_money_thousandths = load_data()
+money_thousandths, total_money_thousandths, clock_seconds = load_data()
 
 last_day = date.today()
 last_time = time.monotonic()
@@ -736,10 +749,11 @@ try:
         delta_time = current_time - last_time
         last_time = current_time
 
-        last_day, money_thousandths, total_money_thousandths = check_new_day(
+        last_day, money_thousandths, total_money_thousandths, clock_seconds = check_new_day(
             last_day,
             money_thousandths,
-            total_money_thousandths
+            total_money_thousandths,
+            clock_seconds
         )
 
         if keyboard_is_active():
@@ -758,7 +772,7 @@ try:
             typing_time_accumulator = 0.0
 
         if current_time - last_save_time >= SAVE_INTERVAL:
-            save_data(money_thousandths, total_money_thousandths)
+            save_data(money_thousandths, total_money_thousandths, clock_seconds)
             last_save_time = current_time
 
         draw_money(money_thousandths, current_time)
@@ -770,11 +784,16 @@ try:
         time.sleep(0.01)
 
 except KeyboardInterrupt:
-    save_data(money_thousandths, total_money_thousandths)
+    save_data(money_thousandths, total_money_thousandths, clock_seconds)
     clear_all()
     money_strip.show()
     clock_strip.show()
 
+    hours = (clock_seconds // 3600) % 24
+    minutes = (clock_seconds // 60) % 60
+    seconds = clock_seconds % 60
+    
     print(f"\nDinero hoy: ${money_thousandths / 1000.0:.3f}")
     print(f"Total acumulado: ${total_money_thousandths / 1000.0:.3f}")
+    print(f"Tiempo de actividad: {hours:02d}:{minutes:02d}:{seconds:02d}")
     
