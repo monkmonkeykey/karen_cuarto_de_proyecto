@@ -19,17 +19,16 @@ MATRIX_LEDS = WIDTH * HEIGHT
 MATRIX_COUNT = 2
 LED_COUNT = MATRIX_LEDS * MATRIX_COUNT
 
-LED_PIN = 18
+# Pines GPIO para cada matriz (modificar según necesidad)
+LED_PIN_MONEY = 18   # GPIO18 para matriz de dinero
+LED_PIN_CLOCK = 27   # GPIO27 para matriz de reloj
+
 LED_FREQ_HZ = 800000
 LED_DMA = 10
 LED_BRIGHTNESS = 10
 LED_INVERT = False
 LED_CHANNEL = 0
 
-# Conexión en cadena:
-# GPIO18 -> DIN matriz 0
-# DOUT matriz 0 -> DIN matriz 1
-#
 # Matriz 0: dinero verde
 # Matriz 1: reloj rojo
 MONEY_MATRIX = 0
@@ -73,20 +72,40 @@ COLOR_MONEY = Color(0, 150, 0)
 COLOR_OFF = Color(0, 0, 0)
 
 # -----------------------------
-# INICIALIZAR TIRA ÚNICA
-# -----------------------------
+# INICIALIZAR TIRAS SEPARADAS
+# Matriz 0 (dinero): GPIO18
+# Matriz 1 (reloj): GPIO27
 
-strip = PixelStrip(
-    LED_COUNT,
-    LED_PIN,
+strip_money = PixelStrip(
+    MATRIX_LEDS,
+    LED_PIN_MONEY,
     LED_FREQ_HZ,
     LED_DMA,
     LED_INVERT,
     LED_BRIGHTNESS,
-    LED_CHANNEL
+    0  # canal 0
 )
 
-strip.begin()
+strip_clock = PixelStrip(
+    MATRIX_LEDS,
+    LED_PIN_CLOCK,
+    LED_FREQ_HZ,
+    LED_DMA,
+    LED_INVERT,
+    LED_BRIGHTNESS,
+    1  # canal 1
+)
+
+strip_money.begin()
+strip_clock.begin()
+
+# Para compatibilidad con código que usa matriz_id
+def get_strip(matrix_id):
+    """Devuelve la tira correcta según el ID de la matriz"""
+    if matrix_id == MONEY_MATRIX:
+        return strip_money
+    else:
+        return strip_clock
 
 # -----------------------------
 # MAPEO XY A ÍNDICE LOCAL
@@ -260,20 +279,21 @@ FONT = {
 # -----------------------------
 
 def clear_all():
-    for i in range(LED_COUNT):
-        strip.setPixelColor(i, COLOR_OFF)
+    for i in range(MATRIX_LEDS):
+        strip_money.setPixelColor(i, COLOR_OFF)
+        strip_clock.setPixelColor(i, COLOR_OFF)
 
 
 def clear_matrix(matrix_id):
-    start = matrix_id * MATRIX_LEDS
-    end = start + MATRIX_LEDS
-
-    for i in range(start, end):
+    strip = get_strip(matrix_id)
+    
+    for i in range(MATRIX_LEDS):
         strip.setPixelColor(i, COLOR_OFF)
 
 
 def set_pixel(matrix_id, x, y, color):
-    index = matrix_xy_to_index(matrix_id, x, y)
+    strip = get_strip(matrix_id)
+    index = xy_to_local_index(x, y)
 
     if index is not None:
         strip.setPixelColor(index, color)
@@ -783,14 +803,17 @@ try:
         draw_money(money_thousandths, current_time)
         draw_time()
 
-        strip.show()
+        # Mostrar ambas tiras
+        strip_money.show()
+        strip_clock.show()
 
         time.sleep(0.01)
 
 except KeyboardInterrupt:
     save_data(money_thousandths, total_money_thousandths)
     clear_all()
-    strip.show()
+    strip_money.show()
+    strip_clock.show()
 
     print(f"\nDinero hoy: ${money_thousandths / 1000.0:.3f}")
     print(f"Total acumulado: ${total_money_thousandths / 1000.0:.3f}")
