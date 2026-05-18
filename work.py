@@ -53,7 +53,7 @@ MIRROR_X = True
 MIRROR_Y = True
 
 ROTATE_180_MONEY = False    # Cambiar a True para rotar la pantalla de dinero 180 grados
-ROTATE_180_CLOCK = False    # Cambiar a True para rotar la pantalla de reloj 180 grados
+ROTATE_180_CLOCK = True    # Cambiar a True para rotar la pantalla de reloj 180 grados
 
 # -----------------------------
 # COLORES
