@@ -17,11 +17,11 @@ HEIGHT = 8
 LED_COUNT = WIDTH * HEIGHT  # 256 LEDs por matriz
 
 # Matriz dinero / verde
-MONEY_LED_PIN = 18          # GPIO18 / pin físico 12
+MONEY_LED_PIN = 13          # GPIO18 / pin físico 12
 MONEY_LED_CHANNEL = 0
 
 # Matriz reloj / roja
-CLOCK_LED_PIN = 13          # GPIO13 / pin físico 33
+CLOCK_LED_PIN = 18          # GPIO13 / pin físico 33
 CLOCK_LED_CHANNEL = 1
 
 LED_FREQ_HZ = 800000
