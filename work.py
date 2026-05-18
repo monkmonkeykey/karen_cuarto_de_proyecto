@@ -16,13 +16,17 @@ WIDTH = 32
 HEIGHT = 8
 LED_COUNT = WIDTH * HEIGHT  # 256 LEDs por matriz
 
+# IMPORTANTE:
+# GPIO13 debe usar channel 1.
+# GPIO18 debe usar channel 0.
+
 # Matriz dinero / verde
-MONEY_LED_PIN = 13          # GPIO18 / pin físico 12
-MONEY_LED_CHANNEL = 0
+MONEY_LED_PIN = 13          # GPIO13 / pin físico 33
+MONEY_LED_CHANNEL = 1
 
 # Matriz reloj / roja
-CLOCK_LED_PIN = 18          # GPIO13 / pin físico 33
-CLOCK_LED_CHANNEL = 1
+CLOCK_LED_PIN = 18          # GPIO18 / pin físico 12
+CLOCK_LED_CHANNEL = 0
 
 LED_FREQ_HZ = 800000
 LED_DMA = 10
@@ -61,24 +65,25 @@ COLOR_OFF = Color(0, 0, 0)
 # INICIALIZAR MATRICES INDEPENDIENTES
 # -----------------------------
 
+# Se usan argumentos nombrados para evitar errores de orden.
 money_strip = PixelStrip(
-    LED_COUNT,
-    MONEY_LED_PIN,
-    LED_FREQ_HZ,
-    LED_DMA,
-    LED_INVERT,
-    LED_BRIGHTNESS,
-    MONEY_LED_CHANNEL
+    num=LED_COUNT,
+    pin=MONEY_LED_PIN,
+    freq_hz=LED_FREQ_HZ,
+    dma=LED_DMA,
+    invert=LED_INVERT,
+    brightness=LED_BRIGHTNESS,
+    channel=MONEY_LED_CHANNEL
 )
 
 clock_strip = PixelStrip(
-    LED_COUNT,
-    CLOCK_LED_PIN,
-    LED_FREQ_HZ,
-    LED_DMA,
-    LED_INVERT,
-    LED_BRIGHTNESS,
-    CLOCK_LED_CHANNEL
+    num=LED_COUNT,
+    pin=CLOCK_LED_PIN,
+    freq_hz=LED_FREQ_HZ,
+    dma=LED_DMA,
+    invert=LED_INVERT,
+    brightness=LED_BRIGHTNESS,
+    channel=CLOCK_LED_CHANNEL
 )
 
 money_strip.begin()
