@@ -21,11 +21,11 @@ LED_COUNT = WIDTH * HEIGHT  # 256 LEDs por matriz
 # GPIO18 debe usar channel 0.
 
 # Matriz dinero / verde
-MONEY_LED_PIN = 13          # GPIO13 / pin físico 33
+MONEY_LED_PIN = 18          # GPIO18 / pin físico 33
 MONEY_LED_CHANNEL = 1
 
 # Matriz reloj / roja
-CLOCK_LED_PIN = 18          # GPIO18 / pin físico 12
+CLOCK_LED_PIN = 13          # GPIO13 / pin físico 12
 CLOCK_LED_CHANNEL = 0
 
 LED_FREQ_HZ = 800000
@@ -751,3 +751,4 @@ except KeyboardInterrupt:
 
     print(f"\nDinero hoy: ${money_thousandths / 1000.0:.3f}")
     print(f"Total acumulado: ${total_money_thousandths / 1000.0:.3f}")
+    
