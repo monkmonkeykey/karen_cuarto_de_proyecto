@@ -14,43 +14,28 @@ from evdev import InputDevice, categorize, ecodes, list_devices
 
 WIDTH = 32
 HEIGHT = 8
+LED_COUNT = WIDTH * HEIGHT  # 256 LEDs por matriz
 
-MATRIX_LEDS = WIDTH * HEIGHT
-MATRIX_COUNT = 2
-LED_COUNT = MATRIX_LEDS * MATRIX_COUNT
+# Matriz dinero / verde
+MONEY_LED_PIN = 18          # GPIO18 / pin físico 12
+MONEY_LED_CHANNEL = 0
 
-LED_PIN = 18
+# Matriz reloj / roja
+CLOCK_LED_PIN = 13          # GPIO13 / pin físico 33
+CLOCK_LED_CHANNEL = 1
+
 LED_FREQ_HZ = 800000
 LED_DMA = 10
 LED_BRIGHTNESS = 10
 LED_INVERT = False
-LED_CHANNEL = 0
-
-# Conexión en cadena:
-# GPIO18 -> DIN matriz 0
-# DOUT matriz 0 -> DIN matriz 1
-#
-# Matriz 0: dinero verde
-# Matriz 1: reloj rojo
-MONEY_MATRIX = 0
-CLOCK_MATRIX = 1
 
 # -----------------------------
 # TECLADO INALÁMBRICO
 # -----------------------------
 
-# No dependemos únicamente de /dev/input/event5,
-# porque puede cambiar al reiniciar o tardar en aparecer.
 EXPECTED_KEYBOARD_NAME = "Logi K250 Keyboard"
-
-# Archivo temporal donde se guarda la ruta real detectada:
-# por ejemplo /dev/input/event5, /dev/input/event4, etc.
 KEYBOARD_PATH_FILE = "/tmp/karen_keyboard_path"
-
-# Ruta inicial opcional. Se intenta primero, pero si falla se busca por nombre.
 DEFAULT_KEYBOARD_PATH = "/dev/input/event5"
-
-# Cada cuánto reintenta abrir/buscar el teclado si no está disponible.
 KEYBOARD_RESCAN_SECONDS = 1.0
 
 # -----------------------------
@@ -73,26 +58,37 @@ COLOR_MONEY = Color(0, 150, 0)
 COLOR_OFF = Color(0, 0, 0)
 
 # -----------------------------
-# INICIALIZAR TIRA ÚNICA
+# INICIALIZAR MATRICES INDEPENDIENTES
 # -----------------------------
 
-strip = PixelStrip(
+money_strip = PixelStrip(
     LED_COUNT,
-    LED_PIN,
+    MONEY_LED_PIN,
     LED_FREQ_HZ,
     LED_DMA,
     LED_INVERT,
     LED_BRIGHTNESS,
-    LED_CHANNEL
+    MONEY_LED_CHANNEL
 )
 
-strip.begin()
+clock_strip = PixelStrip(
+    LED_COUNT,
+    CLOCK_LED_PIN,
+    LED_FREQ_HZ,
+    LED_DMA,
+    LED_INVERT,
+    LED_BRIGHTNESS,
+    CLOCK_LED_CHANNEL
+)
+
+money_strip.begin()
+clock_strip.begin()
 
 # -----------------------------
 # MAPEO XY A ÍNDICE LOCAL
 # -----------------------------
 
-def xy_to_local_index(x, y):
+def xy_to_index(x, y):
     if x < 0 or x >= WIDTH or y < 0 or y >= HEIGHT:
         return None
 
@@ -121,15 +117,6 @@ def xy_to_local_index(x, y):
             return x * HEIGHT + y
 
     return y * WIDTH + x
-
-
-def matrix_xy_to_index(matrix_id, x, y):
-    local_index = xy_to_local_index(x, y)
-
-    if local_index is None:
-        return None
-
-    return matrix_id * MATRIX_LEDS + local_index
 
 # -----------------------------
 # FUENTE 4x7
@@ -259,27 +246,24 @@ FONT = {
 # FUNCIONES DE DIBUJO
 # -----------------------------
 
-def clear_all():
+def clear_strip(strip):
     for i in range(LED_COUNT):
         strip.setPixelColor(i, COLOR_OFF)
 
 
-def clear_matrix(matrix_id):
-    start = matrix_id * MATRIX_LEDS
-    end = start + MATRIX_LEDS
-
-    for i in range(start, end):
-        strip.setPixelColor(i, COLOR_OFF)
+def clear_all():
+    clear_strip(money_strip)
+    clear_strip(clock_strip)
 
 
-def set_pixel(matrix_id, x, y, color):
-    index = matrix_xy_to_index(matrix_id, x, y)
+def set_pixel(strip, x, y, color):
+    index = xy_to_index(x, y)
 
     if index is not None:
         strip.setPixelColor(index, color)
 
 
-def draw_char(matrix_id, char, x_offset, y_offset, color):
+def draw_char(strip, char, x_offset, y_offset, color):
     bitmap = FONT.get(char)
 
     if bitmap is None:
@@ -288,7 +272,7 @@ def draw_char(matrix_id, char, x_offset, y_offset, color):
     for y, row in enumerate(bitmap):
         for x, value in enumerate(row):
             if value == "1":
-                set_pixel(matrix_id, x_offset + x, y_offset + y, color)
+                set_pixel(strip, x_offset + x, y_offset + y, color)
 
     return len(bitmap[0])
 
@@ -306,11 +290,11 @@ def get_text_width(text, spacing=0):
     return total
 
 
-def draw_text(matrix_id, text, x, y, color, spacing=0):
+def draw_text(strip, text, x, y, color, spacing=0):
     cursor_x = x
 
     for i, char in enumerate(text):
-        char_width = draw_char(matrix_id, char, cursor_x, y, color)
+        char_width = draw_char(strip, char, cursor_x, y, color)
         cursor_x += char_width
 
         if i < len(text) - 1:
@@ -329,39 +313,39 @@ def draw_time():
 
     colon_on = int(time.time()) % 2 == 0
 
-    clear_matrix(CLOCK_MATRIX)
+    clear_strip(clock_strip)
 
     # Una sola fila: HH:MM:SS
     y = 1
     x = 1
 
     # HH
-    x += draw_char(CLOCK_MATRIX, hh[0], x, y, COLOR_CLOCK)
-    x += draw_char(CLOCK_MATRIX, hh[1], x, y, COLOR_CLOCK)
+    x += draw_char(clock_strip, hh[0], x, y, COLOR_CLOCK)
+    x += draw_char(clock_strip, hh[1], x, y, COLOR_CLOCK)
     x += 1
 
     # :
     if colon_on:
-        x += draw_char(CLOCK_MATRIX, ":", x, y, COLOR_COLON)
+        x += draw_char(clock_strip, ":", x, y, COLOR_COLON)
     else:
         x += 1
     x += 1
 
     # MM
-    x += draw_char(CLOCK_MATRIX, mm[0], x, y, COLOR_CLOCK)
-    x += draw_char(CLOCK_MATRIX, mm[1], x, y, COLOR_CLOCK)
+    x += draw_char(clock_strip, mm[0], x, y, COLOR_CLOCK)
+    x += draw_char(clock_strip, mm[1], x, y, COLOR_CLOCK)
     x += 1
 
     # :
     if colon_on:
-        x += draw_char(CLOCK_MATRIX, ":", x, y, COLOR_COLON)
+        x += draw_char(clock_strip, ":", x, y, COLOR_COLON)
     else:
         x += 1
     x += 1
 
     # SS
-    x += draw_char(CLOCK_MATRIX, ss[0], x, y, COLOR_CLOCK)
-    x += draw_char(CLOCK_MATRIX, ss[1], x, y, COLOR_CLOCK)
+    x += draw_char(clock_strip, ss[0], x, y, COLOR_CLOCK)
+    x += draw_char(clock_strip, ss[1], x, y, COLOR_CLOCK)
 
 # -----------------------------
 # DIBUJO DEL DINERO
@@ -395,112 +379,84 @@ def format_money_variable(money_thousandths):
 
 def get_animated_money_value(current_time, animation_start_time, start_value, end_value):
     """
-    Interpola el valor del dinero durante la animación (efecto odómetro).
-    Simula números corriendo como en una gasolinera.
+    Interpola el valor del dinero durante la animación tipo odómetro.
     """
-    ANIMATION_DURATION = 0.8  # 800ms para la animación
-    
+    ANIMATION_DURATION = 0.8
+
     elapsed = current_time - animation_start_time
-    
+
     if elapsed >= ANIMATION_DURATION:
-        # Animación terminada, retorna el valor final
         return end_value
-    
-    # Calcula el progreso (0 a 1)
+
     progress = elapsed / ANIMATION_DURATION
-    
-    # Easing: ease-out-cubic para que desacele hacia el final
-    # Hace que los números "frenan" antes de llegar al final
     easing = 1 - ((1 - progress) ** 3)
-    
-    # Interpola entre el valor inicial y final
+
     current_value = int(start_value + (end_value - start_value) * easing)
-    
+
     return current_value
 
 
 def get_money_color_animated(current_time, last_update_time):
-    """Retorna un color animado para el dinero con efecto de destello"""
+    """
+    Retorna un color animado para el dinero con efecto de destello.
+    """
     elapsed = current_time - last_update_time
-    
-    # La animación dura 0.8 segundos
     ANIMATION_DURATION = 0.8
-    
+
     if elapsed > ANIMATION_DURATION:
-        # Después de la animación, color normal
         return COLOR_MONEY
-    
-    # Efecto de pulse suave: el dinero brilla y vuelve a la normalidad
-    progress = elapsed / ANIMATION_DURATION  # 0 a 1
-    
-    # Función de easing para suavidad (ease-out)
+
+    progress = elapsed / ANIMATION_DURATION
     easing = 1 - (progress ** 2)
-    
-    # Incrementa el brillo durante la animación
-    # Verde normal: (0, 150, 0) -> Verde brillante: (0, 255, 0)
-    brightness_boost = int(105 * easing)  # 0 a 105
-    
+
+    brightness_boost = int(105 * easing)
+
     return Color(0, 150 + brightness_boost, 0)
 
 
 def draw_money(money_thousandths, current_time=None):
     if current_time is None:
         current_time = time.monotonic()
-    
-    clear_matrix(MONEY_MATRIX)
-    
-    # Calcula el valor animado
+
+    clear_strip(money_strip)
+
     display_value = get_animated_money_value(
         current_time,
-        animation_state['start_time'],
-        animation_state['start'],
+        animation_state["start_time"],
+        animation_state["start"],
         money_thousandths
     )
-    
+
     text, spacing = format_money_variable(display_value)
-    
-    # Obtener color animado
     money_color = get_money_color_animated(current_time, last_money_update_time)
 
     y = 1
     x = 0
 
-    draw_text(MONEY_MATRIX, text, x, y, money_color, spacing=spacing)
+    draw_text(money_strip, text, x, y, money_color, spacing=spacing)
 
 # -----------------------------
 # CONTROL DE TECLADO / DINERO CON EVDEV
 # -----------------------------
 
-# Dinero guardado en milésimas:
-# 80 = 0.080
-# 160 = 0.160
-# 1000 = 1.000
 money_thousandths = 0
-last_money_update_time = time.monotonic()  # Para animación
+last_money_update_time = time.monotonic()
 
-# Estado de la animación del dinero (tipo odómetro/gasolinera)
 animation_state = {
-    'start': 0,
-    'start_time': time.monotonic()
+    "start": 0,
+    "start_time": time.monotonic()
 }
 
 # Cada segundo completo de actividad suma 0.080
 THOUSANDTHS_PER_SECOND = 80
 
-# Acumula tiempo activo de teclado.
-# Solo cuando llega a 1 segundo suma 0.080.
 typing_time_accumulator = 0.0
 
-# Teclas físicamente presionadas
 pressed_keys = set()
-
-# Último momento en que hubo evento de teclado
 last_keyboard_activity = None
 
-# Ventana para considerar continuidad entre una tecla y otra.
 KEYBOARD_ACTIVITY_WINDOW = 0.25
 
-# Para evitar conflictos entre el hilo del teclado y el loop principal
 keyboard_lock = threading.Lock()
 
 
@@ -594,7 +550,6 @@ def read_saved_keyboard_path():
 
 
 def open_keyboard():
-    # 1. Intentar la ruta guardada por una detección previa.
     saved_path = read_saved_keyboard_path()
 
     if saved_path:
@@ -603,7 +558,6 @@ def open_keyboard():
             print(f"Teclado seleccionado desde archivo: {device.path}: {device.name}")
             return device
 
-    # 2. Intentar la ruta inicial sugerida.
     device = open_keyboard_from_path(DEFAULT_KEYBOARD_PATH)
 
     if device is not None:
@@ -611,7 +565,6 @@ def open_keyboard():
         save_keyboard_path(device.path)
         return device
 
-    # 3. Buscar por nombre entre todos los /dev/input/eventX.
     device = find_keyboard_by_name()
 
     if device is not None:
@@ -763,14 +716,11 @@ try:
             typing_time_accumulator += delta_time
 
             while typing_time_accumulator >= 1.0:
-                # Inicia la animación con el valor anterior
-                animation_state['start'] = money_thousandths
-                animation_state['start_time'] = current_time
-                
-                # Incrementa el dinero
+                animation_state["start"] = money_thousandths
+                animation_state["start_time"] = current_time
+
                 money_thousandths += THOUSANDTHS_PER_SECOND
-                
-                # Actualiza tiempo de destello de color
+
                 last_money_update_time = current_time
                 typing_time_accumulator -= 1.0
         else:
@@ -783,14 +733,16 @@ try:
         draw_money(money_thousandths, current_time)
         draw_time()
 
-        strip.show()
+        money_strip.show()
+        clock_strip.show()
 
         time.sleep(0.01)
 
 except KeyboardInterrupt:
     save_data(money_thousandths, total_money_thousandths)
     clear_all()
-    strip.show()
+    money_strip.show()
+    clock_strip.show()
 
     print(f"\nDinero hoy: ${money_thousandths / 1000.0:.3f}")
     print(f"Total acumulado: ${total_money_thousandths / 1000.0:.3f}")
