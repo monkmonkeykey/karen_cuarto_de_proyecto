@@ -21,12 +21,12 @@ LED_COUNT = WIDTH * HEIGHT  # 256 LEDs por matriz
 # GPIO18 debe usar channel 0.
 
 # Matriz dinero / verde
-MONEY_LED_PIN = 13          # GPIO18 / pin físico 33
-MONEY_LED_CHANNEL = 1
+MONEY_LED_PIN = 18          # GPIO18 / pin físico 33
+MONEY_LED_CHANNEL = 0
 
 # Matriz reloj / roja
-CLOCK_LED_PIN = 18          # GPIO13 / pin físico 12
-CLOCK_LED_CHANNEL = 0
+CLOCK_LED_PIN = 13          # GPIO13 / pin físico 12
+CLOCK_LED_CHANNEL = 1
 
 LED_FREQ_HZ = 800000
 LED_DMA = 10
@@ -125,10 +125,6 @@ def xy_to_index(x, y, apply_rotation=False):
             index = x * HEIGHT + y
     else:
         index = y * WIDTH + x
-
-    # Aplicar rotación de 180 grados si está habilitada
-    if apply_rotation:
-        index = (LED_COUNT - 1) - index
 
     return index
 
@@ -278,7 +274,12 @@ def set_pixel(strip, x, y, color):
     elif strip is clock_strip and ROTATE_180_CLOCK:
         apply_rotation = True
 
-    index = xy_to_index(x, y, apply_rotation=apply_rotation)
+    # Aplicar rotación de 180 grados a las coordenadas
+    if apply_rotation:
+        x = WIDTH - 1 - x
+        y = HEIGHT - 1 - y
+
+    index = xy_to_index(x, y, apply_rotation=False)
 
     if index is not None:
         strip.setPixelColor(index, color)
