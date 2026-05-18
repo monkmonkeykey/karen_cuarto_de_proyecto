@@ -457,7 +457,17 @@ def draw_money(money_thousandths, current_time=None):
     money_color = get_money_color_animated(current_time, last_money_update_time)
 
     y = 1
-    x = 0
+    
+    # Calcular desplazamiento dinámico basado en el número de dígitos enteros
+    # Esto hace que el texto se recorra hacia la izquierda conforme crece
+    value = display_value / 1000.0
+    integer_part = int(value)
+    
+    # Contar dígitos del número entero (sin incluir el $)
+    num_digits = len(str(integer_part))
+    
+    # Desplazar 1 píxel por cada dígito extra después del primero
+    x = max(0, -(num_digits - 1))
 
     draw_text(money_strip, text, x, y, money_color, spacing=spacing)
 
@@ -473,11 +483,8 @@ animation_state = {
     "start_time": time.monotonic()
 }
 
-# Cada segundo completo de actividad suma 0.0185
-THOUSANDTHS_PER_SECOND = 185
-
 # Cada segundo completo de actividad suma 0.080
-THOUSANDTHS_PER_SECOND = 185
+THOUSANDTHS_PER_SECOND = 80000 #185
 
 typing_time_accumulator = 0.0
 
