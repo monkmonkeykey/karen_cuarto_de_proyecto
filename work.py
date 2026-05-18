@@ -52,7 +52,8 @@ WIRING_MODE = "vertical"   # "horizontal" o "vertical"
 MIRROR_X = True
 MIRROR_Y = True
 
-ROTATE_180 = False          # Cambiar a True para rotar las pantallas 180 grados
+ROTATE_180_MONEY = False    # Cambiar a True para rotar la pantalla de dinero 180 grados
+ROTATE_180_CLOCK = False    # Cambiar a True para rotar la pantalla de reloj 180 grados
 
 # -----------------------------
 # COLORES
@@ -95,7 +96,7 @@ clock_strip.begin()
 # MAPEO XY A ÍNDICE LOCAL
 # -----------------------------
 
-def xy_to_index(x, y):
+def xy_to_index(x, y, apply_rotation=False):
     if x < 0 or x >= WIDTH or y < 0 or y >= HEIGHT:
         return None
 
@@ -126,7 +127,7 @@ def xy_to_index(x, y):
         index = y * WIDTH + x
 
     # Aplicar rotación de 180 grados si está habilitada
-    if ROTATE_180:
+    if apply_rotation:
         index = (LED_COUNT - 1) - index
 
     return index
@@ -270,7 +271,14 @@ def clear_all():
 
 
 def set_pixel(strip, x, y, color):
-    index = xy_to_index(x, y)
+    # Determinar si aplicar rotación según el tipo de pantalla
+    apply_rotation = False
+    if strip is money_strip and ROTATE_180_MONEY:
+        apply_rotation = True
+    elif strip is clock_strip and ROTATE_180_CLOCK:
+        apply_rotation = True
+
+    index = xy_to_index(x, y, apply_rotation=apply_rotation)
 
     if index is not None:
         strip.setPixelColor(index, color)
