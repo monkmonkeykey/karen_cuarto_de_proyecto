@@ -327,11 +327,15 @@ def draw_text(strip, text, x, y, color, spacing=0):
 # -----------------------------
 
 def draw_time():
-    now = datetime.now()
+    # Convertir clock_seconds a HH:MM:SS
+    total_seconds = clock_seconds
+    hours = (total_seconds // 3600) % 24
+    minutes = (total_seconds // 60) % 60
+    seconds = total_seconds % 60
 
-    hh = now.strftime("%H")
-    mm = now.strftime("%M")
-    ss = now.strftime("%S")
+    hh = f"{hours:02d}"
+    mm = f"{minutes:02d}"
+    ss = f"{seconds:02d}"
 
     colon_on = int(time.time()) % 2 == 0
 
@@ -473,6 +477,7 @@ animation_state = {
 THOUSANDTHS_PER_SECOND = 80
 
 typing_time_accumulator = 0.0
+clock_seconds = 0  # Contador de segundos desde inicio (solo con interacción)
 
 pressed_keys = set()
 last_keyboard_activity = None
@@ -742,6 +747,7 @@ try:
                 animation_state["start_time"] = current_time
 
                 money_thousandths += THOUSANDTHS_PER_SECOND
+                clock_seconds += 1  # Incrementar contador de segundos con cada segundo de actividad
 
                 last_money_update_time = current_time
                 typing_time_accumulator -= 1.0
