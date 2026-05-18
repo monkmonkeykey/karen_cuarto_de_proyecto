@@ -52,6 +52,8 @@ WIRING_MODE = "vertical"   # "horizontal" o "vertical"
 MIRROR_X = True
 MIRROR_Y = True
 
+ROTATE_180 = False          # Cambiar a True para rotar las pantallas 180 grados
+
 # -----------------------------
 # COLORES
 # -----------------------------
@@ -106,22 +108,28 @@ def xy_to_index(x, y):
     if WIRING_MODE == "horizontal":
         if SERPENTINE:
             if y % 2 == 0:
-                return y * WIDTH + x
+                index = y * WIDTH + x
             else:
-                return y * WIDTH + (WIDTH - 1 - x)
+                index = y * WIDTH + (WIDTH - 1 - x)
         else:
-            return y * WIDTH + x
+            index = y * WIDTH + x
 
     elif WIRING_MODE == "vertical":
         if SERPENTINE:
             if x % 2 == 0:
-                return x * HEIGHT + y
+                index = x * HEIGHT + y
             else:
-                return x * HEIGHT + (HEIGHT - 1 - y)
+                index = x * HEIGHT + (HEIGHT - 1 - y)
         else:
-            return x * HEIGHT + y
+            index = x * HEIGHT + y
+    else:
+        index = y * WIDTH + x
 
-    return y * WIDTH + x
+    # Aplicar rotación de 180 grados si está habilitada
+    if ROTATE_180:
+        index = (LED_COUNT - 1) - index
+
+    return index
 
 # -----------------------------
 # FUENTE 4x7
