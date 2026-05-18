@@ -484,7 +484,7 @@ animation_state = {
 }
 
 # Cada segundo completo de actividad suma 0.080
-THOUSANDTHS_PER_SECOND = 80000 #185
+THOUSANDTHS_PER_SECOND = 8000000 #185
 
 typing_time_accumulator = 0.0
 
