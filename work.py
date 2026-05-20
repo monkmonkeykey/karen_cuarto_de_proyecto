@@ -688,22 +688,38 @@ def load_data():
         try:
             with open(DATA_FILE, "r") as f:
                 data = json.load(f)
-                # Verificar si los datos son del mismo día
-                saved_date = data.get("fecha")
+                
+                # Manejo de formato antiguo (objeto único)
+                if isinstance(data, dict) and "fecha" in data:
+                    # Convertir formato antiguo a nuevo
+                    historial = [{
+                        "fecha": data.get("fecha"),
+                        "dinero_hoy": data.get("dinero_hoy", 0),
+                        "clock_seconds": data.get("clock_seconds", 0)
+                    }]
+                    dinero_total = data.get("dinero_total", 0)
+                else:
+                    # Nuevo formato: array de histórico
+                    historial = data.get("historial", [])
+                    dinero_total = data.get("dinero_total", 0)
+                
                 today = str(date.today())
                 
-                print(f"DEBUG: saved_date={saved_date}, today={today}")
+                # Buscar si existe entrada para hoy
+                entrada_hoy = None
+                for entrada in historial:
+                    if entrada.get("fecha") == today:
+                        entrada_hoy = entrada
+                        break
                 
-                if saved_date == today:
-                    # Mismo día: cargar todos los datos
-                    dinero_hoy = data.get("dinero_hoy", 0)
-                    dinero_total = data.get("dinero_total", 0)
-                    clock_secs = data.get("clock_seconds", 0)
+                if entrada_hoy:
+                    # Mismo día: cargar datos de hoy
+                    dinero_hoy = entrada_hoy.get("dinero_hoy", 0)
+                    clock_secs = entrada_hoy.get("clock_seconds", 0)
                     print(f"DEBUG: Cargado del mismo día - dinero_hoy={dinero_hoy}, clock_seconds={clock_secs}")
                     return (dinero_hoy, dinero_total, clock_secs)
                 else:
                     # Día diferente: dinero nuevo, mantener total
-                    dinero_total = data.get("dinero_total", 0)
                     print(f"DEBUG: Día diferente - dinero_total={dinero_total}")
                     return (0, dinero_total, 0)
         except Exception as e:
@@ -715,20 +731,56 @@ def load_data():
 
 
 def save_data(dinero_hoy, dinero_total, clock_seconds):
-    """Guarda dinero del día, total acumulado y tiempo acumulado."""
+    """Guarda dinero del día, total acumulado y tiempo acumulado con historial."""
     try:
+        today = str(date.today())
+        
+        # Cargar historial existente
+        historial = []
+        if os.path.exists(DATA_FILE):
+            try:
+                with open(DATA_FILE, "r") as f:
+                    data = json.load(f)
+                    
+                    # Manejo de formato antiguo
+                    if isinstance(data, dict) and "fecha" in data:
+                        historial = [{
+                            "fecha": data.get("fecha"),
+                            "dinero_hoy": data.get("dinero_hoy", 0),
+                            "clock_seconds": data.get("clock_seconds", 0)
+                        }]
+                    else:
+                        historial = data.get("historial", [])
+            except Exception:
+                historial = []
+        
+        # Actualizar o crear entrada de hoy
+        entrada_hoy_existe = False
+        for entrada in historial:
+            if entrada.get("fecha") == today:
+                entrada["dinero_hoy"] = dinero_hoy
+                entrada["clock_seconds"] = int(clock_seconds)
+                entrada_hoy_existe = True
+                break
+        
+        if not entrada_hoy_existe:
+            historial.append({
+                "fecha": today,
+                "dinero_hoy": dinero_hoy,
+                "clock_seconds": int(clock_seconds)
+            })
+        
+        # Guardar con nuevo formato
         data = {
-            "fecha": str(date.today()),
-            "dinero_hoy": dinero_hoy,
             "dinero_total": dinero_total,
-            "clock_seconds": int(clock_seconds)  # Convertir a int para asegurar serialización
+            "historial": historial
         }
 
         with open(DATA_FILE, "w") as f:
             json.dump(data, f, indent=2)
         
         # Debug
-        print(f"Guardado: dinero_hoy={dinero_hoy}, clock_seconds={clock_seconds}")
+        print(f"Guardado: dinero_hoy={dinero_hoy}, clock_seconds={clock_seconds}, registros={len(historial)}")
 
     except Exception as e:
         print(f"Error guardando datos: {e}")
