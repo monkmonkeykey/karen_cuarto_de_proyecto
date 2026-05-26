@@ -770,9 +770,11 @@ def save_data(dinero_hoy, dinero_total, clock_seconds):
                 "clock_seconds": int(clock_seconds)
             })
         
-        # Guardar con nuevo formato
+        # Guardar con nuevo formato, incluyendo estado actual
         data = {
             "dinero_total": dinero_total,
+            "dinero_actual_hoy": dinero_hoy,
+            "tiempo_actual_hoy_segundos": int(clock_seconds),
             "historial": historial
         }
 
