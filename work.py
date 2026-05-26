@@ -791,10 +791,18 @@ def check_new_day(last_day, dinero_hoy, dinero_total, clock_seconds):
     today = date.today()
 
     if last_day != today:
+        # IMPORTANTE: Guardar los datos del día anterior ANTES de resetear
+        print(f"Fin del día {last_day}. Guardando datos acumulados...")
+        save_data(dinero_hoy, dinero_total, clock_seconds)
+        
         print(f"Nuevo día: {today}. Total acumulado: ${dinero_total / 1000.0:.3f}")
         dinero_total += dinero_hoy
         dinero_hoy = 0
         clock_seconds = 0  # Reiniciar contador de tiempo
+        
+        # Guardar el nuevo día vacío para registrarlo en el historial
+        save_data(dinero_hoy, dinero_total, clock_seconds)
+        
         return today, dinero_hoy, dinero_total, clock_seconds
 
     return last_day, dinero_hoy, dinero_total, clock_seconds
@@ -817,6 +825,7 @@ try:
         delta_time = current_time - last_time
         last_time = current_time
 
+        # Verificar si cambió el día (guarda datos del día anterior antes de resetear)
         last_day, money_thousandths, total_money_thousandths, clock_seconds = check_new_day(
             last_day,
             money_thousandths,
